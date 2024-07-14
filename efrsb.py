@@ -3,10 +3,13 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
+from bs4 import BeautifulSoup
+import re
+
 def log_message(message):
     print(f"[INFO] {message}")
 
-def get_info_from_efrsb_massage(massage_number,lot_number):
+def get_info_from_efrsb_massage(massage_number, lot_numbers):
     with webdriver.Chrome() as driver:
         wait = WebDriverWait(driver, 10)
         
@@ -19,16 +22,12 @@ def get_info_from_efrsb_massage(massage_number,lot_number):
         wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="ctl00_cphBody_tbMessageNumber"]'))).send_keys(massage_number)
         
         # Очистка даты и клик по кнопке поиска
-        
         wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="ctl00_cphBody_cldrBeginDate_tbSelectedDate"]'))).clear()
-        
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="ctl00_cphBody_ibMessagesSearch"]'))).click()
         time.sleep(1)
+        
         # Ожидание загрузки результатов поиска
         wait.until(EC.presence_of_element_located((By.LINK_TEXT, 'Объявление о проведении торгов'))).click()
-        
-        # Ожидание открытия нового окна
-       
         
         # Получение дескриптора текущего окна
         current_window = driver.current_window_handle
@@ -45,6 +44,7 @@ def get_info_from_efrsb_massage(massage_number,lot_number):
         # Переключение на новое окно
         driver.switch_to.window(new_window)
         time.sleep(1)
+        
         # Ожидание загрузки нового окна
         wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'primary')))
         
@@ -53,6 +53,7 @@ def get_info_from_efrsb_massage(massage_number,lot_number):
         print(new_url)
         driver.get(new_url)
         time.sleep(1)
+        
         # Поиск всех элементов с классом 'primary'
         primary_elements = driver.find_elements(By.CLASS_NAME, 'primary')
         
@@ -79,18 +80,86 @@ def get_info_from_efrsb_massage(massage_number,lot_number):
 
             except Exception as e:
                 log_message(f"Error processing element: {e}")
-        # поиск лота в списке лотов
-        # lot_list = driver.find_elements(By.CLASS_NAME,'lotInfo')
-        # for i in lot_list:
-        #     print(i.find_element(By.CLASS_NAME,'odd').text)
+        
+        # Поиск лота в списке лотов
+        html = driver.page_source
+
+        print(html)
+
+        soup = BeautifulSoup(html, 'html.parser')
+        lot_dict = {}
+        rows = soup.select('table.lotInfo tbody tr')[1:]
+
+        # Проход по всем строкам и извлечение данных
+        for row in rows:
+            cols = row.find_all('td')
+            if len(cols) >= 2:
+                lot_num = cols[0].text.strip()  # lot_number уже используется как аргумент функции
+                if lot_num in lot_numbers:
+                    lot_name = cols[1].text.strip()
+                    lot_dict[lot_num] = lot_name
+
+        # Добавление lot_dict как вложенного словаря в result_dict
+        result_dict["lots"] = lot_dict
+        
         return result_dict
-        
-        # Закрытие нового окна и переключение обратно на исходное окно (если необходимо)
-        # driver.close()
-        # driver.switch_to.window(current_window)
-def OOO_info(my_dict: dict):
-    result_key = ['№ сообщения', 'Наименование должника', 'Адрес', 'ОГРН', 'ИНН', 'Арбитражный управляющий', "Адрес для корреспонденции", "E-mail", "СРО АУ"]
-    for key in result_key:
-        print(f"{key}: {my_dict.get(key)}")
-        
-print(get_info_from_efrsb_massage("14806880","1"))
+
+
+
+
+def oll_info(my_dict: dict):
+    result_keys = [
+        '№ сообщения', 
+        ('Наименование должника', 'ФИО должника'), 
+        ('Адрес',"Место жительства"),
+        ('ОГРН',"СНИЛС"),
+        'ИНН', 
+        'Арбитражный управляющий', 
+        'Адрес для корреспонденции', 
+        'E-mail', 
+        'СРО АУ', 
+        'Вид торгов',
+        'lots'
+    ]
+    
+    for key in result_keys:
+        if isinstance(key, tuple):
+            # Для случаев, когда ключи могут быть разные
+            for subkey in key:
+                if subkey in my_dict:
+                    print(f"{subkey}: {my_dict.get(subkey)}")
+                    break
+        else:
+            print(f"{key}: {my_dict.get(key)}")
+
+
+
+
+def parse_page(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    email = None
+    
+    # Поиск email в таблице
+    table = soup.find('table', class_='lotInfo')
+    if table:
+        email_cell = table.find('td', text=re.compile(r'\b[Ee]-?mail\b'))
+        if email_cell:
+            email = email_cell.find_next('td').get_text(strip=True)
+    
+    # Поиск email в тексте, если не найден в таблице
+    if not email:
+        email_match = re.search(r'[\w\.-]+@[\w\.-]+', soup.get_text())
+        if email_match:
+            email = email_match.group(0)
+    
+    # Если email отсутствует
+    if not email:
+        email = 'Email отсутствует'
+    
+    return email
+
+# Пример использования
+html_content = '''Ваш HTML-код здесь'''
+email = parse_page(html_content)
+print(email)
