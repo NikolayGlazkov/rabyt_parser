@@ -84,13 +84,35 @@ def get_info_from_efrsb_massage(massage_number, lot_numbers):
         # Поиск лота в списке лотов
         html = driver.page_source
 
-        print(html)
-
+###########################################
         soup = BeautifulSoup(html, 'html.parser')
+        email = None
+    
+    # Поиск email в таблице
+        table = soup.find('table', class_='lotInfo')
+        if table:
+            email_cell = table.find('td', text=re.compile(r'\b[Ee]-?mail\b'))
+            if email_cell:
+                email = email_cell.find_next('td').get_text(strip=True)
+    
+    # Поиск email в тексте, если не найден в таблице
+        if not email:
+            email_match = re.search(r'[\w\.-]+@[\w\.-]+', soup.get_text())
+            if email_match:
+                email = email_match.group(0)
+    
+    # Если email отсутствует
+        if not email:
+            email = 'Email отсутствует'
+    
+    # return email
+
+# Пример использования
+   
         lot_dict = {}
         rows = soup.select('table.lotInfo tbody tr')[1:]
 
-        # Проход по всем строкам и извлечение данных
+            # Проход по всем строкам и извлечение данных
         for row in rows:
             cols = row.find_all('td')
             if len(cols) >= 2:
@@ -102,6 +124,7 @@ def get_info_from_efrsb_massage(massage_number, lot_numbers):
         # Добавление lot_dict как вложенного словаря в result_dict
         result_dict["lots"] = lot_dict
         
+        result_dict["E-mail"] = email
         return result_dict
 
 
@@ -119,6 +142,7 @@ def oll_info(my_dict: dict):
         'E-mail', 
         'СРО АУ', 
         'Вид торгов',
+        "Место проведения",
         'lots'
     ]
     
@@ -135,31 +159,4 @@ def oll_info(my_dict: dict):
 
 
 
-def parse_page(html_content):
-    soup = BeautifulSoup(html_content, 'html.parser')
-    
-    email = None
-    
-    # Поиск email в таблице
-    table = soup.find('table', class_='lotInfo')
-    if table:
-        email_cell = table.find('td', text=re.compile(r'\b[Ee]-?mail\b'))
-        if email_cell:
-            email = email_cell.find_next('td').get_text(strip=True)
-    
-    # Поиск email в тексте, если не найден в таблице
-    if not email:
-        email_match = re.search(r'[\w\.-]+@[\w\.-]+', soup.get_text())
-        if email_match:
-            email = email_match.group(0)
-    
-    # Если email отсутствует
-    if not email:
-        email = 'Email отсутствует'
-    
-    return email
 
-# Пример использования
-html_content = '''Ваш HTML-код здесь'''
-email = parse_page(html_content)
-print(email)
